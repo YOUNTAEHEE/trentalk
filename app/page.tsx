@@ -15,7 +15,11 @@ type Message = {
   message: string;
   username: string;
 };
-
+interface Search {
+  id: number;
+  search_keyword: string;
+  rank: number;
+}
 function generateRandomNickname() {
   const adjectives = ["멋진", "빠른", "강한", "즐거운", "용감한", "행복한"];
   const nouns = ["호랑이", "사자", "독수리", "늑대", "곰", "여우"];
@@ -31,16 +35,24 @@ export default function Home() {
   const [newMessage, setNewMessage] = useState("");
   const [nickname, setNickname] = useState<string>("");
   const [showLoading, setShowLoading] = useState(false);
+  const [searches, setSearches] = useState<Search[]>([]);
+  const [loadingSearches, setLoadingSearches] = useState(true);
+
   useEffect(() => {
     const channel = supabase
       .channel("chat")
-      .on("postgres_changes", { event: "*", schema: "public", table: "message" }, (payload) => {
-        console.log("Change received!", payload);
-        fetchMessage();
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "message" },
+        (payload) => {
+          console.log("Change received!", payload);
+          fetchMessage();
+        }
+      )
       .subscribe();
 
     fetchMessage();
+    fetchSearches();
 
     setNickname(generateRandomNickname());
 
@@ -48,6 +60,26 @@ export default function Home() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const fetchSearches = async () => {
+    const { data, error } = await supabase
+      .from("popularsearches")
+      .select("*")
+      .order("rank", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching searches:", error);
+    } else {
+      console.log("Fetched searches:", data);
+
+      const reassignedData = data.slice(0, 6).map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+      setSearches(reassignedData);
+    }
+    setLoadingSearches(false);
+  };
 
   const fetchMessage = async () => {
     setLoading(true);
@@ -57,7 +89,10 @@ export default function Home() {
       if (loading) setShowLoading(true);
     }, 300);
 
-    const { data, error } = await supabase.from("message").select("*").order("id", { ascending: false });
+    const { data, error } = await supabase
+      .from("message")
+      .select("*")
+      .order("id", { ascending: false });
 
     if (error) console.error("Error fetching message:", error);
     else setMessages(data || []);
@@ -71,7 +106,9 @@ export default function Home() {
     e.preventDefault();
     if (newMessage.trim().length === 0) return;
 
-    const { data, error } = await supabase.from("message").insert([{ message: newMessage, username: nickname }]);
+    const { data, error } = await supabase
+      .from("message")
+      .insert([{ message: newMessage, username: nickname }]);
 
     if (error) {
       console.error("Error adding message:", error);
@@ -84,32 +121,49 @@ export default function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center ">
       <div className="flex flex-wrap w-[100%] items-center justify-center pt-10 pb-10">
-        <Link href="/">
-          <h1 className={`${viga.className} w-[100%] text-center text-[1.8rem] text-red-700`}>TRENTALK</h1>
-        </Link>
-        <p className="w-[100%] text-center text-sm text-gray-300 mt-16 mb-2">인기 검색어</p>
+        <div>
+          <h1
+            className={`${viga.className} w-[100%] text-center text-[1.8rem] text-red-700`}
+          >
+            TRENTALK
+          </h1>
+        </div>
+        <p className="w-[100%] text-center text-sm text-gray-300 mt-16 mb-2">
+          인기 검색어
+        </p>
         <div className=" flex flex-wrap items-center justify-center w-[80%] md:w-[40%] lg:w-[20%]">
           <div className="w-[100%] flex flex-wrap  border-[1.5px] border-slate-200 rounded-lg p-8">
-            <div className="w-[100%] p-4 border-red-600 border-[2px] rounded-lg">
-              <Link href="/hotContent" className="text-red-500 cursor-pointer ">
-                <span className="mr-4">1</span> 일등검색어
-              </Link>
-            </div>
-            <Link href="/hotContent" className="w-[100%] p-4 cursor-pointer">
-              <span className="mr-4">2</span> 이등검색어
-            </Link>
-            <Link href="/hotContent" className="w-[100%] p-4 cursor-pointer">
-              <span className="mr-4">3</span> 삼등검색어
-            </Link>
-            <Link href="/hotContent" className="w-[100%] p-4 text-gray-500 cursor-pointer">
-              <span className="mr-4">4</span> 사등검색어
-            </Link>
-            <Link href="/hotContent" className="w-[100%] p-4 text-gray-400 cursor-pointer">
-              <span className="mr-4">5</span> 오등검색어
-            </Link>
-            <Link href="/hotContent" className="w-[100%] p-4 text-gray-300 cursor-pointer">
-              <span className="mr-4">6</span> 육등검색어
-            </Link>
+            {loadingSearches ? (
+              <div className="text-gray-500 text-sm">Loading...</div>
+            ) : (
+              searches.map((search) => {
+                if (search.rank === 1) {
+                  return (
+                    <div
+                      className="w-[100%] p-4 border-red-600 border-[2px] rounded-lg"
+                      key={search.id}
+                    >
+                      <div className="text-red-500 ">
+                        <span className="mr-4">{search.rank}</span>{" "}
+                        {search.search_keyword}
+                      </div>
+                    </div>
+                  );
+                }
+
+                let className = "w-[100%] p-4 ";
+                if (search.rank === 4) className += " text-gray-500";
+                else if (search.rank === 5) className += " text-gray-400";
+                else if (search.rank === 6) className += " text-gray-300";
+
+                return (
+                  <div className={className} key={search.id}>
+                    <span className="mr-4">{search.rank}</span>{" "}
+                    {search.search_keyword}
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <div className=" p-2 mt-4 mb-2 w-[100%] h-[25vh] overflow-y-auto">
