@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Viga } from "next/font/google";
 import { supabase } from "../supabaseClient";
 import { useEffect, useState } from "react";
+import axios from "axios";
+
 const viga = Viga({
   weight: "400",
   subsets: ["latin"],
@@ -62,22 +64,51 @@ export default function Home() {
   }, []);
 
   const fetchSearches = async () => {
-    const { data, error } = await supabase
-      .from("popularsearches")
-      .select("*")
-      .order("rank", { ascending: true });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL_SEARCHES;
+    const token = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (error) {
-      console.error("Error fetching searches:", error);
-    } else {
-      console.log("Fetched searches:", data);
-
-      const reassignedData = data.slice(0, 6).map((item, index) => ({
-        ...item,
-        rank: index + 1,
-      }));
-      setSearches(reassignedData);
+    if (!url || !token) {
+      console.error("Supabase URL or token is not defined");
+      console.log("URL:", url);
+      console.log("Token:", token);
+      return;
     }
+
+    console.log("Fetching searches from", url);
+    console.log("Using token", token);
+
+    try {
+      const response = await axios.post(
+        url,
+        { name: "dudnjs" },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Response status:", response.status);
+
+      if (response.status !== 200) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: Search[] = response.data;
+      console.log("Response data:", data);
+
+      const reassignedData = data
+        .slice(0, 6)
+        .map((item: Search, index: number) => ({
+          ...item,
+          rank: index + 1,
+        }));
+      setSearches(reassignedData);
+    } catch (error) {
+      console.error("Fetch error:", error);
+    }
+
     setLoadingSearches(false);
   };
 
@@ -117,6 +148,18 @@ export default function Home() {
       fetchMessage();
     }
   };
+  const getRankClass = (rank: number) => {
+    switch (rank) {
+      case 4:
+        return "text-gray-500";
+      case 5:
+        return "text-gray-400";
+      case 6:
+        return "text-gray-300";
+      default:
+        return "";
+    }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center ">
@@ -136,33 +179,21 @@ export default function Home() {
             {loadingSearches ? (
               <div className="text-gray-500 text-sm">Loading...</div>
             ) : (
-              searches.map((search) => {
-                if (search.rank === 1) {
-                  return (
-                    <div
-                      className="w-[100%] p-4 border-red-600 border-[2px] rounded-lg"
-                      key={search.id}
-                    >
-                      <div className="text-red-500 ">
-                        <span className="mr-4">{search.rank}</span>{" "}
-                        {search.search_keyword}
-                      </div>
-                    </div>
-                  );
-                }
-
-                let className = "w-[100%] p-4 ";
-                if (search.rank === 4) className += " text-gray-500";
-                else if (search.rank === 5) className += " text-gray-400";
-                else if (search.rank === 6) className += " text-gray-300";
-
-                return (
-                  <div className={className} key={search.id}>
+              searches.map((search) => (
+                <div
+                  className={
+                    search.rank === 1
+                      ? "w-[100%] p-4 border-red-600 border-[2px] rounded-lg"
+                      : `w-[100%] p-4 ${getRankClass(search.rank)}`
+                  }
+                  key={search.id}
+                >
+                  <div className={search.rank === 1 ? "text-red-500" : ""}>
                     <span className="mr-4">{search.rank}</span>{" "}
                     {search.search_keyword}
                   </div>
-                );
-              })
+                </div>
+              ))
             )}
           </div>
 
